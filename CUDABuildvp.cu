@@ -19,36 +19,33 @@ static void HandleError( cudaError_t err, const char *file, int line ) {
 
 
 
-    vptree * CUDABuildvp(double *X,const int n,const int d){
+vptree * CUDABuildvp(double *X,const int n,const int d){
 
 
-      vptree *tree = NULL;
-      tree = (vptree *)malloc(n*sizeof(vptree));   //vptree array
+// --------------------  initialize data and arrays ---------------------------- //
+      vptree *tree = (vptree *)malloc(n*sizeof(vptree));   // Create vp_tree node
 
-      int *X_indexes = (int *)malloc(n*sizeof(int));
+      int *X_indexes = (int *)malloc(n*sizeof(int));  // Array with indexes
       for (int i = 0, j=n-1; i < n; i++,j--)
         X_indexes[i]=j;
-
 
       int *X_indexes_dev; // Data and Results Array to Device
       HANDLE_ERROR( cudaMalloc((void**) &X_indexes_dev,  n*sizeof(int))  );
       HANDLE_ERROR( cudaMemcpy( X_indexes_dev, X_indexes, n*sizeof(int), cudaMemcpyHostToDevice)  ); // Copy Data from dataArr to dataArr_dev
 
-
-      int *array_n = (int *)malloc(n*sizeof(int));
+      int *array_n = (int *)malloc(n*sizeof(int));  // Array with number of points for each sub tree
       for (int i = 0; i < n; i++)
         array_n[i]=n;
 
-      int *array_n_dev;
+      int *array_n_dev; // Device copy of
       HANDLE_ERROR( cudaMalloc((void**) &array_n_dev,  n*sizeof(int))  );
       HANDLE_ERROR( cudaMemcpy( array_n_dev, array_n, n*sizeof(int), cudaMemcpyHostToDevice)  ); // Copy Data from dataArr to dataArr_dev
-      //  free(array_n);
 
-      int *X_heads = (int *)malloc(n*sizeof(int));
+      int *X_heads = (int *)malloc(n*sizeof(int));  // Heads for each element
       for (int i = 0; i < n; i++)
         X_heads[i]=0;
 
-      X_heads[X_indexes[0]]=-1;
+      X_heads[X_indexes[0]]=-1; // set node the first point
 
       int *X_heads_dev; // Data and Results Array to Device
       HANDLE_ERROR( cudaMalloc((void**) &X_heads_dev,  n*sizeof(int))  );
@@ -58,12 +55,11 @@ static void HandleError( cudaError_t err, const char *file, int line ) {
       HANDLE_ERROR( cudaMalloc((void**) &dataArr_dev,  n*d*sizeof(double))  );
       HANDLE_ERROR( cudaMemcpy( dataArr_dev, X, n*d*sizeof(double), cudaMemcpyHostToDevice)  ); // Copy Data from dataArr to dataArr_dev
 
-
-      double *distances = (double *)malloc(n*sizeof(double));
+      double *distances = (double *)malloc(n*sizeof(double)); // Array for distances for each point
       double *distances_dev;
       HANDLE_ERROR( cudaMalloc((void**) &distances_dev,  n*sizeof(double))  );
 
-      int *X_indexes_dev_copy; // Data and Results Array to Device
+      int *X_indexes_dev_copy; // Copy temp Array
       HANDLE_ERROR( cudaMalloc((void**) &X_indexes_dev_copy,  n*sizeof(int))  );
 
 
@@ -74,20 +70,19 @@ static void HandleError( cudaError_t err, const char *file, int line ) {
 
       int deep = ceil(log( n ) / log( 2 ));
 
-      struct timeb startCPU, endCPU;
+      struct timeb startCPU, endCPU;  // timestab
       ftime(&startCPU);
 
-
+// --------------------  main loop, Cuda job ---------------------------- //
       for(int k=0; k<=deep; k++)  {
-
 
 
         distanceWithIndexesGPU<<<grid,block>>>(dataArr_dev,X_indexes_dev,X_heads_dev,distances_dev,n,d);   // Cuda Calculate Distances
         cudaDeviceSynchronize();
 
-        HANDLE_ERROR( cudaMemcpy(X_indexes_dev_copy,  X_indexes_dev,  n*sizeof(int), cudaMemcpyDeviceToDevice)  ); // Copy Data from dataArr to dataArr_dev
+        HANDLE_ERROR( cudaMemcpy(X_indexes_dev_copy,  X_indexes_dev,  n*sizeof(int), cudaMemcpyDeviceToDevice)  ); // Copy Data from X_indexes_dev to X_indexes_dev_copy
 
-        my_sort<<<grid,block>>>(dataArr_dev,X_indexes_dev,X_indexes_dev_copy,X_heads_dev,distances_dev,array_n_dev,n);   // Cuda Calculate Distances
+        my_sort<<<grid,block>>>(dataArr_dev,X_indexes_dev,X_indexes_dev_copy,X_heads_dev,distances_dev,array_n_dev,n);   // Cuda Sorting points
 
         cudaDeviceSynchronize();
 
@@ -103,8 +98,7 @@ static void HandleError( cudaError_t err, const char *file, int line ) {
       HANDLE_ERROR( cudaMemcpy( X_indexes, X_indexes_dev, n*sizeof(int), cudaMemcpyDeviceToHost)  ); // Copy Data from dataArr to dataArr_dev
 
 
-
-
+// ---------------  Tranform from inorder array to binary tree with pointers in CPU ------------------//
       for (int i = 0; i < n; i++)
       {
         int index = 0;
